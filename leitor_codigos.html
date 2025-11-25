@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <title>Leitor de Códigos → Excel (Android)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leitor de código (câmera) -->
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+    <!-- Biblioteca para gerar Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+        }
+        h1 {
+            font-size: 18px;
+        }
+        button {
+            margin: 4px 4px 4px 0;
+            padding: 8px 12px;
+            cursor: pointer;
+        }
+        #reader {
+            width: 100%;
+            max-width: 380px;
+            margin-top: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 13px;
+        }
+        th, td {
+            border: 1px solid #ccc;
+            padding: 4px 6px;
+            text-align: left;
+        }
+        th {
+            background: #f0f0f0;
+        }
+        #status {
+            margin-top: 8px;
+            font-size: 13px;
+            color: #333;
+        }
+        #manual-input {
+            margin-top: 8px;
+        }
+        #manual-input input {
+            padding: 6px;
+            width: 70%;
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <h1>Leitor de Códigos → Excel (Android)</h1>
+
+    <div>
+        <button id="start-camera">Iniciar câmera</button>
+        <button id="stop-camera" disabled>Parar câmera</button>
+        <button id="export-excel">Exportar para Excel</button>
+    </div>
+
+    <div id="manual-input">
+        <input type="text" id="manual-code" placeholder="Digitar código manualmente" />
+        <button id="add-manual">Adicionar</button>
+    </div>
+
+    <div id="status">Status: carregando...</div>
+
+    <div id="reader"></div>
+
+    <h2>Lista de códigos</h2>
+    <table id="codes-table">
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Código</th>
+                <th>Data/Hora</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+
+    <script>
+        let html5QrCode = null;
+        let isCameraRunning = false;
+        let codes = [];
+
+        const statusEl = document.getElementById('status');
+        const tableBody = document.querySelector('#codes-table tbody');
+        const startBtn = document.getElementById('start-camera');
+        const stopBtn  = document.getElementById('stop-camera');
+
+        function atualizaStatus(texto) {
+            console.log(texto);
+            statusEl.textContent = 'Status: ' + texto;
+        }
+
+        function atualizarTabela() {
+            tableBody.innerHTML = '';
+            codes.forEach((item, index) => {
+                const tr = document.createElement('tr');
+
+                const tdIndex = document.createElement('td');
+                tdIndex.textContent = index + 1;
+
+                const tdCodigo = document.createElement('td');
+                tdCodigo.textContent = item.codigo;
+
+                const tdDataHora = document.createElement('td');
+                tdDataHora.textContent = item.dataHora;
+
+                tr.appendChild(tdIndex);
+                tr.appendChild(tdCodigo);
+                tr.appendChild(tdDataHora);
+
+                tableBody.appendChild(tr);
+            });
+        }
+
+        function adicionarCodigo(codigoLido) {
+            if (!codigoLido) return;
+
+            const agora = new Date();
+            const dataHora = agora.toLocaleString('pt-BR');
+
+            codes.push({ codigo: codigoLido, dataHora });
+            atualizarTabela();
+            atualizaStatus('Código capturado: ' + codigoLido);
+        }
+
+        window.addEventListener('load', () => {
+            let msg = 'pronto.';
+            if (typeof Html5Qrcode === 'undefined') {
+                msg += ' ERRO: html5-qrcode não carregou.';
+            }
+            if (typeof XLSX === 'undefined') {
+                msg += ' ERRO: XLSX não carregou.';
+            }
+            atualizaStatus(msg);
+        });
+
+        startBtn.addEventListener('click', async () => {
+            try {
+                if (typeof Html5Qrcode === 'undefined') {
+                    atualizaStatus('html5-qrcode não carregou. Confere a internet.');
+                    return;
+                }
+
+                if (isCameraRunning) return;
+
+                html5QrCode = new Html5Qrcode('reader');
+
+                const config = {
+                    fps: 10,
+                    qrbox: { width: 250, height: 250 }
+                };
+
+                const onScanSuccess = (decodedText, decodedResult) => {
+                    adicionarCodigo(decodedText);
+                };
+
+                await html5QrCode.start(
+                    { facingMode: 'environment' },
+                    config,
+                    onScanSuccess
+                );
+
+                isCameraRunning = true;
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                atualizaStatus('Câmera ligada (Android).');
+            } catch (err) {
+                console.error(err);
+                atualizaStatus('Erro ao iniciar câmera: ' + err);
+            }
+        });
+
+        stopBtn.addEventListener('click', async () => {
+            try {
+                if (html5QrCode && isCameraRunning) {
+                    await html5QrCode.stop();
+                    await html5QrCode.clear();
+                    isCameraRunning = false;
+                    startBtn.disabled = false;
+                    stopBtn.disabled = true;
+                    atualizaStatus('Câmera parada.');
+                }
+            } catch (err) {
+                console.error(err);
+                atualizaStatus('Erro ao parar câmera: ' + err);
+            }
+        });
+
+        document.getElementById('add-manual').addEventListener('click', () => {
+            const input = document.getElementById('manual-code');
+            const valor = input.value.trim();
+            if (valor) {
+                adicionarCodigo(valor);
+                input.value = '';
+                input.focus();
+            }
+        });
+
+        document.getElementById('manual-code').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('add-manual').click();
+            }
+        });
+
+        document.getElementById('export-excel').addEventListener('click', () => {
+            if (codes.length === 0) {
+                alert('Nenhum código para exportar.');
+                return;
+            }
+
+            if (typeof XLSX === 'undefined') {
+                alert('XLSX não carregou. Precisa estar com internet.');
+                return;
+            }
+
+            const dados = codes.map((item, idx) => ({
+                '#': idx + 1,
+                'Código': item.codigo,
+                'Data/Hora': item.dataHora
+            }));
+
+            const worksheet = XLSX.utils.json_to_sheet(dados);
+            const workbook = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(workbook, worksheet, 'Códigos');
+
+            XLSX.writeFile(workbook, 'codigos_android.xlsx');
+        });
+    </script>
+</body>
+</html>
